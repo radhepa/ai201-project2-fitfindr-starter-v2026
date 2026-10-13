@@ -169,29 +169,84 @@ loosened) and stop: `suggest_outfit` and `create_fit_card` are never called and
      1. One FULL query and its output, pasted as text.
      2. Your three per-tool terminal tests — the command and what it printed. -->
 
-**One full query**
+**One full query** (happy path)
 
 ```
-$ python app.py ask '...'
+$ python app.py ask 'vintage graphic tee under $30, size L'
 
+  Found:    Graphic Tee — 2003 Tour Bootleg Style — $24.0 on depop
+
+  Outfit:   Outfit 1:
+Graphic Tee with Baggy straight-leg jeans, Vintage black denim jacket, and Black combat boots.
+Works because the double black denim and combat boots lean hard into the grunge aesthetic of the vintage tour tee.
+
+Outfit 2:
+Graphic Tee with Wide-leg khaki trousers, Brown leather belt, and Chunky white sneakers.
+Works because the graphic pops against tan trousers while the belt and sneakers balance streetwear and casual cool.
+
+  Fit card: Scored this 2003 tour bootleg style graphic tee on depop for just $24 and it's already my new favorite piece for leaning into a grungy streetwear vibe. Whether I'm pairing it with double black denim or dressing it down with khaki trousers, it just works. 🎸
+
+#thrifted #streetwear #grungetyle
+
+2 model calls this session, 551 prompt + 170 output tokens
+```
+
+**The empty-search branch** (stops before `suggest_outfit`, 0 model calls)
+
+```
+$ python app.py ask 'designer ballgown size XXS under $5'
+
+  Nothing matched 'designer ballgown' in size XXS under $5. No listing mentions any of those words at all — try a broader item type like 'tee', 'jacket', 'jeans', 'dress' or 'sneakers'.
+
+0 model calls this session
 ```
 
 **The three tools, tested one at a time**
 
 ```
-$ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
+$ python -c "from tools import search_listings; print([(x['id'], x['title'], x['size'], x['price']) for x in search_listings('graphic tee', max_price=30)])"
+[('lst_006', 'Graphic Tee — 2003 Tour Bootleg Style', 'L', 24.0), ('lst_002', 'Y2K Baby Tee — Butterfly Print', 'S/M', 18.0), ('lst_033', 'Vintage Band Tee — Faded Grey', 'L', 19.0), ('lst_015', 'Vintage Graphic Hoodie — Faded Black', 'L', 26.0), ('lst_017', 'Mesh Long-Sleeve Top — Black', 'S/M', 15.0), ('lst_012', 'Oversized Crewneck Sweatshirt — Vintage Navy', 'XL (fits oversized)', 20.0), ('lst_011', 'Low-Rise Cargo Pants — Khaki', 'W29', 27.0)]
 
+$ python -c "from tools import search_listings; print(search_listings('designer ballgown', size='XXS', max_price=5))"
+[]
 ```
 
 ```
-$ python -c "from tools import suggest_outfit; ..."
+$ python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
+Outfit One:
+Vintage Levi's 501 Jeans, White ribbed tank top, Black cropped zip hoodie, Chunky white sneakers, Black crossbody bag.
+Why it works: The cropped hoodie and white tank balance the straight-leg fit, creating a clean, classic streetwear contrast.
 
+Outfit Two:
+Vintage Levi's 501 Jeans, Oversized grey crewneck sweatshirt, Brown leather belt, Black combat boots.
+Why it works: Tucking the oversized crewneck into the mid-rise denim with a belt adds definition, anchored by rugged boots.
+
+$ python -c "from tools import suggest_outfit; from utils.data_loader import get_empty_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_empty_wardrobe()))"
+No wardrobe saved yet, so here are general ideas:
+
+For an easy daytime look, pair the jeans with a tucked-in ribbed white tank top, an oversized black leather biker jacket, and chunky black loafers. Add a minimalist silver belt to tie it together.
+
+For a streetwear-inspired outfit, style them with a cropped graphic hoodie in a faded charcoal grey, retro canvas high-top sneakers, and a casual canvas tote bag.
+
+Both looks lean into the vintage silhouette of the Levi's, keeping the focus on the classic denim wash.
 ```
 
 ```
-$ python -c "from tools import create_fit_card; ..."
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('jeans and white sneakers', load_listings()[0]))"
+(run three times with AI201_CACHE=0)
 
+Scored these vintage Levi's 501 jeans on Depop for just $38 and they fit like an absolute dream. Throwing them on with crisp white sneakers for that effortlessly laid-back, 90s streetwear vibe. Can't beat a classic denim day. 👖✨ #thrifty #denim #streetwear
+---
+Scored these vintage Levi's 501 jeans on depop for just $38 and they instantly became my new favorite pair. Threw them on with some fresh white sneakers for that effortless, 90s streetwear look that just works every time. Nothing beats real broken-in denim. #vintagelevis #thriftfinds #streetwear
+---
+Scored these vintage Levi's 501 jeans on depop for just $38 and they fit like an absolute dream. Threw them on with my favorite white sneakers for that effortlessly chill, 90s off-duty vibe. Honestly, nothing beats broken-in denim. 👖✨ #vintagelevis #thriftfinds #streetwear
+
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('   ', load_listings()[0]))"
+Can't write a fit card: no outfit suggestion was given for Vintage Levi's 501 Jeans — Medium Wash.
 ```
+
+The three captions differ in wording but all open with "Scored these…" — worth
+watching for in unit 4.
 
 ---
 
