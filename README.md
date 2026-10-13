@@ -259,17 +259,34 @@ watching for in unit 4.
      "I gave Claude my search_listings spec. It returned None on no match
      instead of an empty list, so I changed it" is the level we want. -->
 
-**Moment 1**
+**Moment 1 — attacking my state criterion**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I wrote criterion 3 as "compare the price of the selected
+  item with the item suggest_outfit got, 5 of 5" and asked Claude to test it
+  using only what the sentence said.
+- *What came back:* It pointed out that price doesn't identify an item — the
+  graphic tee and the denim shorts both cost $24, and three listings cost $38 —
+  so a run that passed the wrong item could still pass my check. It also said
+  my sentence never named a query to run.
+- *What I changed:* I switched to comparing the unique listing `id` and named
+  the query `'vintage graphic tee under $30, size L'`.
 
-**Moment 2**
+**Moment 2 — attacking my size criterion and its reason**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I wrote criterion 5 as "search for size L, nothing outside
+  L should come back, 4 of 5 because models can make mistakes" and asked Claude
+  to check it against my Tool Inventory.
+- *What came back:* Two problems. My own spec says `L` also matches `L/XL` and
+  `One Size`, so the criterion would fail even when the code worked. And the
+  size filter is plain code with no model in it, so "models make mistakes" was
+  the wrong reason — by the same logic I used for criterion 2 it should be 5 of 5.
+- *What I changed:* I defined what counts as a size match (exactly L, L as one
+  slash part, or One Size), raised the target to 5 of 5, and rewrote the reason.
+
+I also had Claude Code build the tools and the loop from my Milestone 2 spec.
+One bug it hit along the way: the regex that spots a standalone size read the
+"s" in "Levi's" as size S, so the size pattern was tightened to ignore letters
+that come straight after an apostrophe.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
