@@ -13,7 +13,9 @@ Build and test your three tools in `tools.py` first. Then come here.
     python agent.py          runs both example paths below
 """
 
-import config
+import re
+
+import config  # noqa: F401
 import trace
 from tools import search_listings, suggest_outfit, create_fit_card
 from generate import ModelUnavailable
@@ -106,10 +108,118 @@ def run_agent(query: str, wardrobe: dict) -> dict:
         than a stack trace. The import is already at the top of this file.
     """
     session = new_session(query, wardrobe)
+    step = "parse"
+    count = 0
 
-    # TODO: delete these two lines and build the loop.
-    session["error"] = "The planning loop isn't built yet — see the TODO in agent.py."
+    while step != "done":
+        count += 1
+        trace.check_iterations(count)
+
+        if step == "parse":
+            session["parsed"] = parse_query(query)
+            step = "search"
+
+        elif step == "search":
+            p = session["parsed"]
+            session["search_results"] = search_listings(
+                p["description"], p["size"], p["max_price"]
+            )
+            # THE BRANCH: nothing found -> explain what to change and stop.
+            if not session["search_results"]:
+                session["error"] = explain_empty_search(p)
+                step = "done"
+            else:
+                session["selected_item"] = session["search_results"][0]
+                step = "suggest"
+
+        elif step == "suggest":
+            session["outfit_suggestion"] = suggest_outfit(
+                session["selected_item"], session["wardrobe"]
+            )
+            step = "fit_card"
+
+        elif step == "fit_card":
+            session["fit_card"] = create_fit_card(
+                session["outfit_suggestion"], session["selected_item"]
+            )
+            step = "done"
+
     return session
+
+
+# ── query parsing ─────────────────────────────────────────────────────────────
+
+_PRICE = re.compile(
+    r"(?:under|below|less than|max|up to|<=?)\s*\$?\s*(\d+(?:\.\d+)?)"
+    r"|\$\s*(\d+(?:\.\d+)?)(?:\s*(?:or less|max))?",
+    re.IGNORECASE,
+)
+_SIZE = re.compile(
+    r"\bsize\s+((?:us\s*)?\d+(?:\.\d+)?|w\d+|[a-z]{1,3})\b"
+    r"|(?<!\S)(xxs|xs|s|m|l|xl|xxl)(?![\w'])",
+    re.IGNORECASE,
+)
+
+
+def parse_query(query: str) -> dict:
+    """
+    Pull a description, a size and a max_price out of a plain-language query,
+    with regex. Whatever isn't the price or the size is the description.
+
+        "vintage graphic tee under $30, size M"
+        -> {"description": "vintage graphic tee", "size": "M", "max_price": 30.0}
+    """
+    text = query
+    max_price = None
+    m = _PRICE.search(text)
+    if m:
+        max_price = float(m.group(1) or m.group(2))
+        text = text[: m.start()] + " " + text[m.end():]
+
+    size = None
+    m = _SIZE.search(text)
+    if m:
+        size = (m.group(1) or m.group(2)).upper()
+        text = text[: m.start()] + " " + text[m.end():]
+
+    words = re.findall(r"[A-Za-z0-9'-]+", text)
+    filler = {"looking", "for", "a", "an", "the", "in", "i", "want", "need", "some", "and", "please"}
+    description = " ".join(w for w in words if w.lower() not in filler)
+    return {"description": description, "size": size, "max_price": max_price}
+
+
+def explain_empty_search(parsed: dict) -> str:
+    """
+    Say which part of the request to change. Re-runs the search with each
+    filter loosened to find out which one emptied it — still only
+    search_listings, never the next tool.
+    """
+    desc, size, price = parsed["description"], parsed["size"], parsed["max_price"]
+    asked = f"'{desc}'" + (f" in size {size}" if size else "") + (
+        f" under ${price:g}" if price is not None else ""
+    )
+    head = f"Nothing matched {asked}."
+
+    if not desc.strip():
+        return f"{head} Add what kind of item you want, e.g. 'graphic tee' or 'denim jacket'."
+
+    any_words = search_listings(desc)
+    if not any_words:
+        return (
+            f"{head} No listing mentions any of those words at all — try a "
+            "broader item type like 'tee', 'jacket', 'jeans', 'dress' or 'sneakers'."
+        )
+
+    tips = []
+    if price is not None and search_listings(desc, size, None):
+        cheapest = min(x["price"] for x in search_listings(desc, size, None))
+        tips.append(f"raise your max price to at least ${cheapest:g}")
+    if size and search_listings(desc, None, price):
+        sizes = sorted({x["size"] for x in search_listings(desc, None, price)})
+        tips.append(f"drop the size, or try one of: {', '.join(sizes[:5])}")
+    if not tips:
+        tips.append("drop both the size and the price limit")
+    return f"{head} To get results, " + " or ".join(tips) + "."
 
 
 # ── running it directly ───────────────────────────────────────────────────────
